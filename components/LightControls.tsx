@@ -24,7 +24,7 @@ const LightControls = ({ lights, toggleLight, updateBrightness, updateColor, tog
         <View style={styles.container}>
             <View style={styles.header}>
                 <View style={styles.titleContainer}>
-                    <Icon name="house-signal" size={20} color={colors.primary} />
+                    <Icon name="wifi" size={20} color={colors.primary} />
                     <Text style={styles.title}>Light Controls</Text>
                 </View>
 
