@@ -6,21 +6,48 @@ import {
   StyleSheet,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Alert,
   Platform
 } from 'react-native';
 import { FontAwesome5, FontAwesome6 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Lamp, LampStatusResponse } from '@/types';
+
+// Import Firebase
+import { initializeApp } from 'firebase/app';
+import {
+  getDatabase,
+  ref,
+  onValue,
+  set,
+  update
+} from 'firebase/database';
+
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBDajKmo4JpXoYS7Xu0c3QBIImlanvOFFY",
+  authDomain: "smartlightingproject-d599e.firebaseapp.com",
+  databaseURL: "https://smartlightingproject-d599e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "smartlightingproject-d599e",
+  storageBucket: "smartlightingproject-d599e.firebasestorage.app",
+  messagingSenderId: "734122093067",
+  appId: "1:734122093067:web:0b28135e8fd72ac35af50e"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
+
 import StatsCard from '@/components/StatsCard';
-import LightCard from '@/components/LigthCard';
-import { hexToRgb } from '@/utils/colorUtils';
+
+// Simplified lamp interface
+interface Lamp {
+  id: number;
+  name: string;
+  isOn: boolean;
+}
 
 const App: React.FC = () => {
-  const [ipAddress, setIpAddress] = useState<string>('192.168.117.1');
   const [lamps, setLamps] = useState<Lamp[]>([]);
   const [onAllLights, setOnAllLights] = useState<boolean>(false);
   const [activeLights, setActiveLights] = useState<number>(0);
@@ -30,178 +57,123 @@ const App: React.FC = () => {
     status: 'Loading...',
     detail: 'Checking systems',
   });
-  const [isRunningLedActive, setIsRunningLedActive] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [esp32Online, setEsp32Online] = useState<boolean>(false);
 
   useEffect(() => {
-    loadIpAddress();
+    // Set up Firebase listeners
+    setupFirebaseListeners();
   }, []);
 
-  const loadIpAddress = async () => {
-    try {
-      const savedIp = await AsyncStorage.getItem('lightingIpAddress');
-      if (savedIp) {
-        setIpAddress(savedIp);
-      }
-      fetchLampStatus(savedIp || ipAddress);
-    } catch (error) {
-      console.error('Error loading IP address:', error);
-    }
-  };
-
-  const saveIpAddress = async () => {
-    try {
-      await AsyncStorage.setItem('lightingIpAddress', ipAddress);
-      fetchLampStatus(ipAddress);
-      Alert.alert('Success', 'IP address saved successfully!');
-    } catch (error) {
-      console.error('Error saving IP address:', error);
-      Alert.alert('Error', 'Failed to save IP address');
-    }
-  };
-
-  const fetchLampStatus = async (ip: string) => {
+  const setupFirebaseListeners = () => {
     setIsLoading(true);
-    try {
-      const response = await fetch(`http://${ip}/lamp/status`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      const data: LampStatusResponse = await response.json();
 
-      if (data.hasOwnProperty('runningLedActive')) {
-        setIsRunningLedActive(data.runningLedActive);
+    // Listen for device status
+    const deviceStatusRef = ref(database, 'device_status/esp32_1');
+    onValue(deviceStatusRef, (snapshot) => {
+      const data = snapshot.val();
+      setEsp32Online(data?.online || false);
+
+      if (data?.online) {
+        setSystemStatus({
+          status: 'Online',
+          detail: 'All systems operational',
+        });
+      } else {
+        setSystemStatus({
+          status: 'Offline',
+          detail: 'Device disconnected',
+        });
+      }
+    });
+
+    // Listen for lamp statuses
+    const lampuRef = ref(database, 'lampu');
+    onValue(lampuRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Convert Firebase data to lamp array
+        const lampArray: Lamp[] = [];
+
+        // Process each lamp entry from Firebase
+        Object.keys(data).forEach((key) => {
+          const lampId = parseInt(key);
+          const isOn = data[key];
+
+          // Create lamp object with simplified structure
+          lampArray.push({
+            id: lampId,
+            name: `Light ${lampId}`,
+            isOn: isOn
+          });
+        });
+
+        setLamps(lampArray);
+        const active = lampArray.filter(lamp => lamp.isOn).length;
+        setActiveLights(active);
+        setTotalLights(lampArray.length);
+        setEnergyUsage((active * 0.06).toFixed(2) + ' kWh');
+
+        // Check if all lights are on
+        const allLightsOn = lampArray.every(lamp => lamp.isOn);
+        setOnAllLights(allLightsOn && lampArray.length > 0);
       }
 
-      setLamps(data.lamps);
-      const active = data.lamps.filter(lamp => lamp.status === 'ON').length;
-      setActiveLights(active);
-      setTotalLights(data.lamps.length);
-      setEnergyUsage((active * 0.06).toFixed(2) + ' kWh');
-      setSystemStatus({
-        status: 'Online',
-        detail: 'All systems operational',
-      });
-    } catch (error) {
-      console.error('Error fetching lamp status:', error);
-      setSystemStatus({
-        status: 'Offline',
-        detail: 'Connection error',
-      });
-    } finally {
       setIsLoading(false);
-    }
+    });
   };
 
   const toggleLight = async (lightId: number, isCurrentlyOn: boolean) => {
     try {
-      const endpoint = isCurrentlyOn
-        ? `http://${ipAddress}/lamp/off`
-        : `http://${ipAddress}/lamp/on`;
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: lightId }),
-      });
-
-      if (response.ok) {
-        fetchLampStatus(ipAddress);
-      } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.error || 'Failed to toggle light');
-      }
+      const lampRef = ref(database, `lampu/${lightId}`);
+      await set(lampRef, !isCurrentlyOn);
     } catch (error) {
       console.error('Error toggling light:', error);
-      Alert.alert('Connection Error', 'Failed to connect to the device');
-    }
-  };
-
-  const changeColor = async (lightId: number, color: string) => {
-    try {
-      const rgbColor = hexToRgb(color);
-      const response = await fetch(`http://${ipAddress}/lamp/color`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: lightId,
-          color: rgbColor,
-        }),
-      });
-
-      if (response.ok) {
-        fetchLampStatus(ipAddress);
-      } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.error || 'Failed to change color');
-      }
-    } catch (error) {
-      console.error('Error changing light color:', error);
-      Alert.alert('Connection Error', 'Failed to connect to the device');
+      Alert.alert('Error', 'Failed to toggle light. Please try again.');
     }
   };
 
   const toggleAllLights = async (turnOn: boolean) => {
-
     try {
-      const endpoint = `http://${ipAddress}/lamp/all/${turnOn ? 'on' : 'off'}`;
-      const response = await fetch(endpoint);
+      const updates: { [key: string]: boolean } = {};
 
-      if (response.ok) {
-        setOnAllLights(turnOn);
-        fetchLampStatus(ipAddress);
-      } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.error || `Failed to turn all lights ${turnOn ? 'on' : 'off'}`);
-      }
+      // Create updates for all lamps
+      lamps.forEach(lamp => {
+        updates[`lampu/${lamp.id}`] = turnOn;
+      });
+
+      // Update all lamps at once
+      await update(ref(database), updates);
     } catch (error) {
       console.error(`Error turning all lights ${turnOn ? 'on' : 'off'}:`, error);
-      Alert.alert('Connection Error', 'Failed to connect to the device');
+      Alert.alert('Error', `Failed to turn all lights ${turnOn ? 'on' : 'off'}`);
     }
   };
 
-  const toggleRunningLed = async () => {
-    try {
-      // Get color from the first active light or use a random color
-      let color = {
-        r: Math.floor(Math.random() * 256),
-        g: Math.floor(Math.random() * 256),
-        b: Math.floor(Math.random() * 256),
-      };
-
-      const activeLamp = lamps.find(lamp => lamp.status === 'ON');
-      if (activeLamp) {
-        color = activeLamp.currentColor;
-      }
-
-      const response = await fetch(`http://${ipAddress}/lamp/running`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          enable: !isRunningLedActive,
-          color: color,
-          interval: 200, // Default interval of 200ms
-        }),
-      });
-
-      if (response.ok) {
-        setIsRunningLedActive(!isRunningLedActive);
-        fetchLampStatus(ipAddress);
-      } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.error || 'Failed to toggle running LED mode');
-      }
-    } catch (error) {
-      console.error('Error toggling running LED mode:', error);
-      Alert.alert('Connection Error', 'Failed to connect to the device');
-    }
+  // Simplified light card component directly in the file since it's simpler now
+  const SimpleLightCard = ({ lamp, onToggle, disabled }: {
+    lamp: Lamp,
+    onToggle: (id: number, isOn: boolean) => void,
+    disabled: boolean
+  }) => {
+    return (
+      <View style={[styles.lightCard, disabled && styles.disabledCard]}>
+        <View style={styles.lightCardContent}>
+          <View style={styles.lightInfo}>
+            <View style={[styles.statusDot, { backgroundColor: lamp.isOn ? '#10b981' : '#94a3b8' }]} />
+            <Text style={styles.lightName}>{lamp.name}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.toggleButton, lamp.isOn ? styles.onButton : styles.offButton]}
+            onPress={() => onToggle(lamp.id, lamp.isOn)}
+            disabled={disabled}
+          >
+            <FontAwesome5 name="power-off" size={14} color="#fff" />
+            <Text style={styles.toggleText}>{lamp.isOn ? 'ON' : 'OFF'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -209,26 +181,19 @@ const App: React.FC = () => {
       <StatusBar barStyle="dark-content" backgroundColor="#f0f4f8" />
       <ScrollView contentContainerStyle={styles.scrollView}>
         <View style={styles.card}>
-          <View style={styles.ipAddressContainer}>
-            <View style={styles.ipAddressHeader}>
-              <FontAwesome5 name="network-wired" size={20} color="#3b82f6" />
-              <Text style={styles.sectionTitle}>Device IP Address</Text>
+          <View style={styles.headerContainer}>
+            <View style={styles.titleHeader}>
+              <FontAwesome5 name="database" size={20} color="#3b82f6" />
+              <Text style={styles.sectionTitle}>Firebase Smart Lighting</Text>
             </View>
-            <View style={styles.ipInputContainer}>
-              <TextInput
-                style={styles.ipInput}
-                value={ipAddress}
-                onChangeText={setIpAddress}
-                placeholder="Enter device IP"
-                placeholderTextColor="#94a3b8"
-              />
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={saveIpAddress}
-              >
-                <FontAwesome5 name="save" size={16} color="#fff" />
-                <Text style={styles.buttonText}>Save & Connect</Text>
-              </TouchableOpacity>
+            <View style={styles.statusContainer}>
+              <View style={[
+                styles.statusIndicator,
+                esp32Online ? styles.statusOnline : styles.statusOffline
+              ]} />
+              <Text style={styles.statusText}>
+                ESP32 Status: {esp32Online ? 'Online' : 'Offline'}
+              </Text>
             </View>
           </View>
         </View>
@@ -240,56 +205,42 @@ const App: React.FC = () => {
               <Text style={styles.sectionTitle}>Light Controls</Text>
             </View>
             <View style={styles.controlButtonsContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.controlButton,
-                  isRunningLedActive ? styles.orangeButton : styles.greenButton
-                ]}
-                onPress={toggleRunningLed}
-              >
-                <FontAwesome5
-                  name={isRunningLedActive ? "stop" : "play"}
-                  size={16}
-                  color="#fff"
-                />
-                <Text style={styles.buttonText}>
-                  {isRunningLedActive ? "Stop Running" : "Running Led"}
-                </Text>
-              </TouchableOpacity>
-
-              <>
-                {
-                  onAllLights ? (
-                    <TouchableOpacity
-                      style={[styles.controlButton, styles.grayButton]}
-                      onPress={() => toggleAllLights(false)}
-                    >
-                      <FontAwesome5 name="power-off" size={16} color="#fff" />
-                      <Text style={styles.buttonText}>All Off</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={[styles.controlButton, styles.greenButton]}
-                      onPress={() => toggleAllLights(true)}
-                    >
-                      <FontAwesome5 name="power-off" size={16} color="#fff" />
-                      <Text style={styles.buttonText}>All On</Text>
-                    </TouchableOpacity>
-                  )
-                }
-              </>
+              {onAllLights ? (
+                <TouchableOpacity
+                  style={[styles.controlButton, styles.grayButton]}
+                  onPress={() => toggleAllLights(false)}
+                  disabled={!esp32Online}
+                >
+                  <FontAwesome5 name="power-off" size={16} color="#fff" />
+                  <Text style={styles.buttonText}>All Off</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.controlButton, styles.greenButton]}
+                  onPress={() => toggleAllLights(true)}
+                  disabled={!esp32Online}
+                >
+                  <FontAwesome5 name="power-off" size={16} color="#fff" />
+                  <Text style={styles.buttonText}>All On</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
           <View style={styles.lightsContainer}>
             {lamps.map((lamp) => (
-              <LightCard
+              <SimpleLightCard
                 key={lamp.id}
                 lamp={lamp}
                 onToggle={toggleLight}
-                onColorChange={changeColor}
+                disabled={!esp32Online}
               />
             ))}
+            {lamps.length === 0 && !isLoading && (
+              <Text style={styles.noLightsText}>
+                No lights found. Check device connection.
+              </Text>
+            )}
           </View>
         </View>
 
@@ -331,7 +282,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   card: {
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#fff',
     borderRadius: 24,
     padding: 20,
     marginBottom: 20,
@@ -341,10 +292,10 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 5,
   },
-  ipAddressContainer: {
+  headerContainer: {
     width: '100%',
   },
-  ipAddressHeader: {
+  titleHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
@@ -355,20 +306,12 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     marginLeft: 10,
   },
-  ipInputContainer: {
+  statusContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  ipInput: {
-    flex: 1,
-    minWidth: 200,
+    alignItems: 'center',
     backgroundColor: '#f0f4f8',
     borderRadius: 10,
     padding: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -377,19 +320,22 @@ const styles = StyleSheet.create({
     borderColor: '#3b82f6',
     borderWidth: 1.5,
   },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+  statusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  statusOnline: {
+    backgroundColor: '#10b981',
+  },
+  statusOffline: {
+    backgroundColor: '#ef4444',
+  },
+  statusText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontWeight: '700',
+    color: '#1e293b',
   },
   controlsHeader: {
     marginBottom: 16,
@@ -423,9 +369,6 @@ const styles = StyleSheet.create({
   greenButton: {
     backgroundColor: '#10b981',
   },
-  orangeButton: {
-    backgroundColor: '#f97316',
-  },
   grayButton: {
     backgroundColor: '#94a3b8',
   },
@@ -439,6 +382,64 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'column',
+  },
+  noLightsText: {
+    textAlign: 'center',
+    padding: 20,
+    color: '#64748b',
+    fontStyle: 'italic',
+  },
+  lightCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  disabledCard: {
+    opacity: 0.7,
+  },
+  lightCardContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  lightInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  lightName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  onButton: {
+    backgroundColor: '#10b981',
+  },
+  offButton: {
+    backgroundColor: '#94a3b8',
+  },
+  toggleText: {
+    color: '#fff',
+    marginLeft: 6,
+    fontWeight: '500',
   },
 });
 
