@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
     },
     borderOff: {
-        borderColor: colors.inactive,
+        borderColor: colors.secondary,
         borderWidth: 1,
     },
 });

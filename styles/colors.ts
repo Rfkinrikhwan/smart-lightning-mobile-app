@@ -1,7 +1,7 @@
 // styles/colors.ts
 export const colors = {
-    primary: '#10b981',
-    secondary: '#3b82f6',
+    primary: '#d78751',
+    secondary: '#e8b796',
     background: '#f8fafc',
     darkBackground: '#0f172a',
     cardBackground: '#ffffff',
@@ -14,4 +14,5 @@ export const colors = {
     highlight: '#00e9d5',
     yellowLight: '#facc15',
     yellowSun: '#fde047',
+    danger: '#F44336',
 };

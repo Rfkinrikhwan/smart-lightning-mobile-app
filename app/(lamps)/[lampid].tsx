@@ -144,7 +144,7 @@ export default function LampDetail() {
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor={colors.darkBackground} />
+                <StatusBar barStyle="light-content" backgroundColor={colors.cardBackground} />
                 <View style={styles.loadingContainer}>
                     <Text style={styles.loadingText}>Loading schedule...</Text>
                 </View>
@@ -154,12 +154,12 @@ export default function LampDetail() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={colors.darkBackground} />
+            <StatusBar barStyle="light-content" backgroundColor={colors.cardBackground} />
 
             {/* Header with back button */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-                    <FontAwesome5 name="arrow-left" size={18} color={colors.cardBackground} />
+                    <FontAwesome5 name="arrow-left" size={18} color={colors.primary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Schedule Settings</Text>
                 <View style={{ width: 24 }} />
@@ -200,7 +200,7 @@ export default function LampDetail() {
                             style={styles.timeButton}
                             onPress={() => handleSetTime("on")}
                         >
-                            <FontAwesome5 name="clock" size={14} color={colors.darkBackground} />
+                            <FontAwesome5 name="clock" size={14} color={colors.primary} />
                             <Text style={styles.timeButtonText}>Set Time</Text>
                         </TouchableOpacity>
                     </View>
@@ -216,7 +216,7 @@ export default function LampDetail() {
                             style={styles.timeButton}
                             onPress={() => handleSetTime("off")}
                         >
-                            <FontAwesome5 name="clock" size={14} color={colors.darkBackground} />
+                            <FontAwesome5 name="clock" size={14} color={colors.primary} />
                             <Text style={styles.timeButtonText}>Set Time</Text>
                         </TouchableOpacity>
                     </View>
@@ -260,7 +260,7 @@ export default function LampDetail() {
                         style={styles.saveButton}
                         onPress={handleSave}
                     >
-                        <FontAwesome5 name="save" size={16} color={colors.darkBackground} />
+                        <FontAwesome5 name="save" size={16} color={colors.primary} />
                         <Text style={styles.saveButtonText}>Save Schedule</Text>
                     </TouchableOpacity>
 
@@ -271,7 +271,7 @@ export default function LampDetail() {
                         ]}
                         onPress={handleDelete}
                     >
-                        <FontAwesome5 name="trash" size={16} color={colors.cardBackground} />
+                        <FontAwesome5 name="trash" size={16} color={colors.danger} />
                         <Text style={styles.deleteButtonText}>Delete Schedule</Text>
                     </TouchableOpacity>
                 </View>
@@ -285,7 +285,7 @@ export default function LampDetail() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.darkBackground,
+        backgroundColor: colors.cardBackground,
     },
     loadingContainer: {
         flex: 1,
@@ -307,14 +307,14 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: "rgba(255,255,255,0.1)",
+        backgroundColor: colors.secondary + "20",
         justifyContent: "center",
         alignItems: "center",
     },
     headerTitle: {
         fontSize: 18,
         fontWeight: "600",
-        color: colors.cardBackground,
+        color: colors.primary,
     },
     scrollContent: {
         padding: 16,
@@ -326,6 +326,8 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
+        borderWidth: 1,
+        borderColor: colors.secondary,
     },
     lampIconContainer: {
         width: 40,
@@ -353,6 +355,8 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
+        borderWidth: 1,
+        borderColor: colors.secondary,
     },
     sectionTitle: {
         fontSize: 16,
@@ -400,13 +404,13 @@ const styles = StyleSheet.create({
     timeButton: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: colors.highlight,
+        backgroundColor: colors.secondary + "20",
         paddingHorizontal: 12,
         paddingVertical: 8,
         borderRadius: 8,
     },
     timeButtonText: {
-        color: colors.darkBackground,
+        color: colors.primary,
         fontWeight: "600",
         marginLeft: 6,
         fontSize: 14,
@@ -449,12 +453,12 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: colors.highlight,
+        backgroundColor: colors.secondary + "40",
         paddingVertical: 14,
         borderRadius: 12,
     },
     saveButtonText: {
-        color: colors.darkBackground,
+        color: colors.primary,
         fontWeight: "600",
         fontSize: 16,
         marginLeft: 8,
@@ -463,7 +467,7 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(255,255,255,0.1)",
+        backgroundColor: colors.danger + "30",
         paddingVertical: 14,
         borderRadius: 12,
     },
@@ -471,7 +475,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     deleteButtonText: {
-        color: colors.cardBackground,
+        color: colors.danger,
         fontWeight: "600",
         fontSize: 16,
         marginLeft: 8,

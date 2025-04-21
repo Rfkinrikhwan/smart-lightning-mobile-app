@@ -9,13 +9,25 @@ export interface Lamp {
     isOn: boolean;
 }
 
+export interface DeviceStatus {
+    online: boolean;
+    lastSeen?: string;
+}
+
 // Listen for device status
-export const listenForDeviceStatus = (callback: (isOnline: boolean) => void): Unsubscribe => {
-    const deviceStatusRef = ref(database, 'device_status/esp32_1');
-    return onValue(deviceStatusRef, (snapshot: DataSnapshot) => {
-        const data = snapshot.val();
-        callback(data?.online || false);
+export const listenForDeviceStatus = (callback: (status: DeviceStatus) => void) => {
+    const statusRef = ref(database, 'device_status/esp32_1');
+
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+        const data = snapshot.val() || {};
+        const status: DeviceStatus = {
+            online: data.online || false,
+            lastSeen: data.lastSeen || new Date().toISOString()
+        };
+        callback(status);
     });
+
+    return unsubscribe;
 };
 
 // Listen for lamp statuses

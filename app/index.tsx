@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, Image } from 'react-native';
 import { useRouter } from 'expo-router';
+import { colors } from '@/styles/colors';
 
 const WelcomeScreen = () => {
   const router = useRouter()
@@ -11,7 +12,7 @@ const WelcomeScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.secondary} />
       <View style={styles.content}>
         <View style={styles.illustrationContainer}>
           {/* Cyan background shape */}
@@ -47,7 +48,7 @@ const WelcomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: colors.secondary,
   },
   content: {
     flex: 1,
@@ -75,15 +76,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '900',
     color: '#FFFFFF',
     lineHeight: 34,
   },
   subtitle: {
     fontSize: 16,
-    color: '#AAAAAA',
     marginTop: 10,
     lineHeight: 22,
+    color: colors.textPrimary
   },
   buttonContainer: {
     paddingHorizontal: 24,
@@ -91,12 +92,12 @@ const styles = StyleSheet.create({
   continueButton: {
     backgroundColor: '#ffffff',
     paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonText: {
-    color: '#000000',
+    color: colors.primary,
     fontSize: 16,
     fontWeight: '600',
   },

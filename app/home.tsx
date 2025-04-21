@@ -7,6 +7,7 @@ import {
     Text,
     ScrollView,
     Alert,
+    TouchableOpacity,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import DeviceCard from '../components/DeviceCard';
@@ -49,13 +50,14 @@ const rooms: Room[] = [
     { id: 'kitchen', name: 'Kitchen' },
 ];
 
+// Power consumption per lamp in watts
+const LAMP_POWER_CONSUMPTION = 10;
+
 const HomeScreen: React.FC = () => {
-    const [lamps, setLamps] = useState<Lamp[]>([]);
     const [devices, setDevices] = useState<Device[]>([]);
-    const [onAllLights, setOnAllLights] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [esp32Online, setEsp32Online] = useState<boolean>(false);
-    const [selectedRoom, setSelectedRoom] = useState<string>('all');
+    const [esp32LastSeen, setEsp32LastSeen] = useState<string>('');
     const [weather, setWeather] = useState<Weather>({
         temperature: '18° C',
         condition: 'Sunny',
@@ -67,7 +69,10 @@ const HomeScreen: React.FC = () => {
 
     useEffect(() => {
         // Set up Firebase listeners
-        const deviceStatusUnsubscribe = listenForDeviceStatus(setEsp32Online);
+        const deviceStatusUnsubscribe = listenForDeviceStatus((status) => {
+            setEsp32Online(status.online);
+            setEsp32LastSeen(status.lastSeen || new Date().toISOString());
+        });
 
         // Listen for schedules
         const schedulesRef = ref(database, 'jadwal');
@@ -85,7 +90,6 @@ const HomeScreen: React.FC = () => {
     // Separate useEffect for lamp data that depends on schedulesData
     useEffect(() => {
         const lampsUnsubscribe = listenForLamps((lampData) => {
-            setLamps(lampData);
 
             // Get the lamp IDs that have schedules
             const lampsWithSchedules = Object.keys(schedulesData);
@@ -104,7 +108,6 @@ const HomeScreen: React.FC = () => {
 
             // Check if all lights are on
             const allLightsOn = lampData.every(lamp => lamp.isOn);
-            setOnAllLights(allLightsOn && lampData.length > 0);
 
             setIsLoading(false);
         });
@@ -136,10 +139,6 @@ const HomeScreen: React.FC = () => {
         ));
     };
 
-    const filteredDevices = selectedRoom === 'all'
-        ? devices
-        : devices.filter(device => device.room === selectedRoom);
-
     // Helper function to get icon for device type
     const getIconForDeviceType = (type: string): string => {
         switch (type) {
@@ -151,12 +150,27 @@ const HomeScreen: React.FC = () => {
         }
     };
 
+    // Calculate power consumption
+    const activeLampsCount = devices.filter(device => device.isOn).length;
+    const totalPowerConsumption = activeLampsCount * LAMP_POWER_CONSUMPTION;
+
+    // Format the last seen time
+    const formatLastSeen = (dateString: string): string => {
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+                ', ' + date.toLocaleDateString();
+        } catch (e) {
+            return 'Unknown';
+        }
+    };
+
     return (
         <>
-            <StatusBar barStyle="light-content" backgroundColor={colors.darkBackground} />
+            <StatusBar barStyle="light-content" backgroundColor={colors.cardBackground} />
 
             <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor={colors.darkBackground} />
+                <StatusBar barStyle="light-content" backgroundColor={colors.cardBackground} />
 
                 <View style={styles.header}>
                     <View>
@@ -170,20 +184,81 @@ const HomeScreen: React.FC = () => {
                     </View>
                 </View>
 
-                <View style={styles.weatherCard}>
-                    <View style={styles.weatherIcon}>
-                        <FontAwesome5 name="sun" size={25} color={colors.yellowSun} />
-                    </View>
-                    <View style={styles.weatherInfo}>
-                        <Text style={styles.weatherDate}>{weather.date}</Text>
-                        <Text style={styles.weatherCondition}>{weather.condition}</Text>
-                    </View>
-                    <Text style={styles.temperature}>{weather.temperature}</Text>
-                </View>
-
                 <ScrollView contentContainerStyle={styles.scrollContent}>
+                    {/* Weather Card */}
+                    <View style={styles.weatherCard}>
+                        <View style={styles.weatherIcon}>
+                            <FontAwesome5 name="sun" size={25} color={colors.yellowSun} />
+                        </View>
+                        <View style={styles.weatherInfo}>
+                            <Text style={styles.weatherDate}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())}</Text>
+                            <Text style={styles.weatherCondition}>{weather.condition}</Text>
+                        </View>
+                        <Text style={styles.temperature}>{weather.temperature}</Text>
+                    </View>
+
+                    {/* Power Consumption Card */}
+                    <View style={styles.infoCard}>
+                        <View style={styles.infoIconContainer}>
+                            <FontAwesome5 name="bolt" size={25} color="#FFD700" />
+                        </View>
+                        <View style={styles.infoContent}>
+                            <Text style={styles.infoTitle}>Power Consumption</Text>
+                            <Text style={styles.infoSubtitle}>
+                                {activeLampsCount} active lamp{activeLampsCount !== 1 ? 's' : ''}
+                            </Text>
+                        </View>
+                        <View style={styles.infoValueContainer}>
+                            <Text style={styles.infoValue}>{totalPowerConsumption}</Text>
+                            <Text style={styles.infoUnit}>watts</Text>
+                        </View>
+                    </View>
+
+                    {/* ESP32 Status Card */}
+                    <View style={[
+                        styles.infoCard,
+                        { borderColor: esp32Online ? colors.success : colors.danger }
+                    ]}>
+                        <View style={[
+                            styles.infoIconContainer,
+                            { backgroundColor: esp32Online ? colors.success + '20' : colors.danger + '20' }
+                        ]}>
+                            <FontAwesome5
+                                name={esp32Online ? "wifi" : "exclamation-triangle"}
+                                size={25}
+                                color={esp32Online ? colors.success : colors.danger}
+                            />
+                        </View>
+                        <View style={styles.infoContent}>
+                            <Text style={styles.infoTitle}>ESP32 Device</Text>
+                            <Text style={[
+                                styles.infoSubtitle,
+                                { color: esp32Online ? colors.success : colors.danger }
+                            ]}>
+                                {esp32Online ? 'Online' : 'Offline'}
+                            </Text>
+                            <Text style={styles.infoLastSeen}>
+                                Last seen: {formatLastSeen(esp32LastSeen)}
+                            </Text>
+                        </View>
+                        <TouchableOpacity
+                            style={[
+                                styles.refreshButton,
+                                { backgroundColor: esp32Online ? colors.success + '20' : colors.danger + '20' }
+                            ]}
+                        >
+                            <FontAwesome5
+                                name="sync"
+                                size={16}
+                                color={esp32Online ? colors.success : colors.danger}
+                            />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Devices Grid */}
+                    <Text style={styles.sectionTitle}>Your Lights</Text>
                     <View style={styles.deviceGrid}>
-                        {filteredDevices.map((device, index) => (
+                        {devices.map((device, index) => (
                             <View key={device.id} style={[styles.deviceColumn, index % 2 === 1 && styles.deviceColumnRight]}>
                                 <DeviceCard
                                     device={device}
@@ -195,7 +270,7 @@ const HomeScreen: React.FC = () => {
                         ))}
                     </View>
 
-                    {filteredDevices.length === 0 && !isLoading && (
+                    {devices.length === 0 && !isLoading && (
                         <Text style={styles.noDevicesText}>
                             No devices found in this room.
                         </Text>
@@ -210,7 +285,7 @@ const HomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#000000',
+        backgroundColor: colors.cardBackground,
     },
     header: {
         flexDirection: 'row',
@@ -232,7 +307,7 @@ const styles = StyleSheet.create({
     greetingText: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: colors.cardBackground,
+        color: colors.primary,
     },
     welcomeText: {
         color: colors.inactive,
@@ -268,13 +343,23 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 16,
     },
+    scrollContent: {
+        padding: 16,
+    },
     weatherCard: {
         flexDirection: 'row',
         backgroundColor: colors.cardBackground,
         borderRadius: 12,
         padding: 16,
-        marginHorizontal: 16,
+        marginBottom: 16,
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: colors.secondary,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
     },
     weatherIcon: {
         width: 40,
@@ -302,8 +387,74 @@ const styles = StyleSheet.create({
         fontSize: 24,
         fontWeight: 'bold',
     },
-    scrollContent: {
+    infoCard: {
+        flexDirection: 'row',
+        backgroundColor: colors.cardBackground,
+        borderRadius: 12,
         padding: 16,
+        marginBottom: 16,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: colors.secondary,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    infoIconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(255, 215, 0, 0.2)', // Light gold background
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    infoContent: {
+        flex: 1,
+    },
+    infoTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: colors.darkBackground,
+    },
+    infoSubtitle: {
+        fontSize: 14,
+        color: colors.inactive,
+        marginTop: 2,
+    },
+    infoLastSeen: {
+        fontSize: 12,
+        color: colors.inactive,
+        marginTop: 4,
+    },
+    infoValueContainer: {
+        alignItems: 'center',
+    },
+    infoValue: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: colors.primary,
+    },
+    infoUnit: {
+        fontSize: 12,
+        color: colors.inactive,
+    },
+    refreshButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: colors.primary,
+        marginTop: 8,
+        marginBottom: 8,
     },
     noDevicesText: {
         textAlign: 'center',
