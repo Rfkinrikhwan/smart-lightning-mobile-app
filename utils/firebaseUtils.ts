@@ -59,6 +59,18 @@ export const listenForLamps = (callback: (lamps: Lamp[]) => void): Unsubscribe =
     });
 };
 
+// Add this to your firebaseUtils.js file
+export const updateDeviceOnlineStatus = async (online: boolean) => {
+    try {
+        const deviceStatusRef = ref(database, 'device_status/esp32_1/online');
+        await set(deviceStatusRef, online);
+        return true;
+    } catch (error) {
+        console.error('Error updating device online status:', error);
+        return false;
+    }
+};
+
 // Toggle a single light
 export const toggleLight = async (lightId: number, isCurrentlyOn: boolean): Promise<boolean> => {
     try {

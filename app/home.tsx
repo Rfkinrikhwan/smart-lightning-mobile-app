@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     SafeAreaView,
     StatusBar,
@@ -8,6 +8,7 @@ import {
     ScrollView,
     Alert,
     TouchableOpacity,
+    ActivityIndicator,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import DeviceCard from '../components/DeviceCard';
@@ -17,10 +18,12 @@ import {
     listenForLamps,
     toggleLight,
     toggleAllLights,
-    Lamp
+    Lamp,
+    updateDeviceOnlineStatus
 } from '../utils/firebaseUtils';
 import { onValue, ref } from 'firebase/database';
 import { database } from '@/firebase/config';
+import { fetchWeatherData, getWeatherIcon, getWeatherIconColor, WeatherData } from '../utils/weatherUtils';
 
 interface Room {
     id: string;
@@ -37,12 +40,6 @@ interface Device {
     hasSchedule?: boolean;
 }
 
-interface Weather {
-    temperature: string;
-    condition: string;
-    date: string;
-}
-
 const rooms: Room[] = [
     { id: 'living', name: 'Living room' },
     { id: 'bedroom', name: 'Bedroom' },
@@ -52,22 +49,72 @@ const rooms: Room[] = [
 
 // Power consumption per lamp in watts
 const LAMP_POWER_CONSUMPTION = 10;
+// Timeout for device offline status (30 seconds)
+const DEVICE_OFFLINE_TIMEOUT = 30000; // 30 seconds in milliseconds
 
 const HomeScreen: React.FC = () => {
     const [devices, setDevices] = useState<Device[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [esp32Online, setEsp32Online] = useState<boolean>(false);
     const [esp32LastSeen, setEsp32LastSeen] = useState<string>('');
-    const [weather, setWeather] = useState<Weather>({
-        temperature: '18° C',
-        condition: 'Sunny',
-        date: 'Sunday, 20 Apr 2025'
+    const [weather, setWeather] = useState<WeatherData>({
+        temperature: '28° C',
+        condition: 'Loading...',
+        icon: '01d',
+        date: new Date().toLocaleDateString('en-US', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        }),
+        humidity: 70,
+        windSpeed: 3.5,
+        location: 'Binjai, ID'
     });
+    const [isWeatherLoading, setIsWeatherLoading] = useState<boolean>(true);
     const [userName, setUserName] = useState<string>('Rifki');
     const [location, setLocation] = useState<string>('Binjai, Indonesia');
     const [schedulesData, setSchedulesData] = useState<Record<string, any>>({});
 
+    // Use a ref to store the status check interval
+    const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const weatherRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Function to check if device is offline based on last seen timestamp
+    const checkDeviceStatus = () => {
+        if (!esp32LastSeen) return;
+
+        const lastSeenTime = new Date(esp32LastSeen).getTime();
+        const currentTime = new Date().getTime();
+        const timeDifference = currentTime - lastSeenTime;
+
+        // If last seen is more than 30 seconds ago and device is marked as online
+        if (timeDifference > DEVICE_OFFLINE_TIMEOUT && esp32Online) {
+            // Update Firebase - only change online status to false
+            updateDeviceOnlineStatus(false);
+            // Update local state
+            setEsp32Online(false);
+        }
+    };
+
+    // Function to load weather data
+    const loadWeatherData = async () => {
+        setIsWeatherLoading(true);
+        try {
+            const data = await fetchWeatherData();
+            setWeather(data);
+            setLocation(data.location);
+        } catch (error) {
+            console.error('Failed to load weather data:', error);
+        } finally {
+            setIsWeatherLoading(false);
+        }
+    };
+
     useEffect(() => {
+        // Load weather data on component mount
+        loadWeatherData();
+
         // Set up Firebase listeners
         const deviceStatusUnsubscribe = listenForDeviceStatus((status) => {
             setEsp32Online(status.online);
@@ -81,11 +128,30 @@ const HomeScreen: React.FC = () => {
             setSchedulesData(data);
         });
 
+        // Set up interval to check device status every 5 seconds
+        statusCheckIntervalRef.current = setInterval(checkDeviceStatus, 5000);
+
+        // Set up interval to refresh weather data every 30 minutes (1800000 ms)
+        weatherRefreshIntervalRef.current = setInterval(loadWeatherData, 1800000);
+
         return () => {
             deviceStatusUnsubscribe();
             schedulesUnsubscribe();
+
+            // Clear intervals on component unmount
+            if (statusCheckIntervalRef.current) {
+                clearInterval(statusCheckIntervalRef.current);
+            }
+            if (weatherRefreshIntervalRef.current) {
+                clearInterval(weatherRefreshIntervalRef.current);
+            }
         };
     }, []); // No dependencies here
+
+    // Effect to run status check when last seen time changes
+    useEffect(() => {
+        checkDeviceStatus();
+    }, [esp32LastSeen]);
 
     // Separate useEffect for lamp data that depends on schedulesData
     useEffect(() => {
@@ -165,6 +231,16 @@ const HomeScreen: React.FC = () => {
         }
     };
 
+    // Handle refresh button click
+    const handleRefresh = () => {
+        checkDeviceStatus();
+    };
+
+    // Handle weather refresh
+    const handleWeatherRefresh = () => {
+        loadWeatherData();
+    };
+
     return (
         <>
             <StatusBar barStyle="light-content" backgroundColor={colors.cardBackground} />
@@ -187,14 +263,40 @@ const HomeScreen: React.FC = () => {
                 <ScrollView contentContainerStyle={styles.scrollContent}>
                     {/* Weather Card */}
                     <View style={styles.weatherCard}>
-                        <View style={styles.weatherIcon}>
-                            <FontAwesome5 name="sun" size={25} color={colors.yellowSun} />
-                        </View>
-                        <View style={styles.weatherInfo}>
-                            <Text style={styles.weatherDate}>{new Intl.DateTimeFormat('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())}</Text>
-                            <Text style={styles.weatherCondition}>{weather.condition}</Text>
-                        </View>
-                        <Text style={styles.temperature}>{weather.temperature}</Text>
+                        {isWeatherLoading ? (
+                            <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                            <>
+                                <View style={styles.weatherIcon}>
+                                    <FontAwesome5
+                                        name={getWeatherIcon(weather.icon)}
+                                        size={25}
+                                        color={getWeatherIconColor(weather.icon)}
+                                    />
+                                </View>
+                                <View style={styles.weatherInfo}>
+                                    <Text style={styles.weatherDate}>{weather.date}</Text>
+                                    <Text style={styles.weatherCondition}>{weather.condition}</Text>
+                                    <View style={styles.weatherDetails}>
+                                        <Text style={styles.weatherDetailText}>
+                                            <FontAwesome5 name="tint" size={12} color={colors.inactive} /> {weather.humidity}%
+                                        </Text>
+                                        <Text style={styles.weatherDetailText}>
+                                            <FontAwesome5 name="wind" size={12} color={colors.inactive} /> {weather.windSpeed} m/s
+                                        </Text>
+                                    </View>
+                                </View>
+                                <View style={styles.temperatureContainer}>
+                                    <Text style={styles.temperature}>{weather.temperature}</Text>
+                                    <TouchableOpacity
+                                        style={styles.weatherRefreshButton}
+                                        onPress={handleWeatherRefresh}
+                                    >
+                                        <FontAwesome5 name="sync" size={12} color={colors.inactive} />
+                                    </TouchableOpacity>
+                                </View>
+                            </>
+                        )}
                     </View>
 
                     {/* Power Consumption Card */}
@@ -246,6 +348,7 @@ const HomeScreen: React.FC = () => {
                                 styles.refreshButton,
                                 { backgroundColor: esp32Online ? colors.success + '20' : colors.danger + '20' }
                             ]}
+                            onPress={handleRefresh}
                         >
                             <FontAwesome5
                                 name="sync"
@@ -382,10 +485,26 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '500',
     },
+    weatherDetails: {
+        flexDirection: 'row',
+        marginTop: 4,
+    },
+    weatherDetailText: {
+        color: colors.inactive,
+        fontSize: 12,
+        marginRight: 12,
+    },
+    temperatureContainer: {
+        alignItems: 'center',
+    },
     temperature: {
         color: colors.darkBackground,
         fontSize: 24,
         fontWeight: 'bold',
+    },
+    weatherRefreshButton: {
+        marginTop: 4,
+        padding: 4,
     },
     infoCard: {
         flexDirection: 'row',
