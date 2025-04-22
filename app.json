@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Smart Lightning",
-    "slug": "Smart Lightning",
+    "slug": "smart-lightning",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -15,7 +15,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.rfkinrikjwan.smartlightning"
     },
     "web": {
       "bundler": "metro",
@@ -36,6 +37,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "9b5037d5-bb1b-4dc5-aeea-5d482a0b887d"
+      }
     }
   }
 }
