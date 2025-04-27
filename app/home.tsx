@@ -50,7 +50,7 @@ const rooms: Room[] = [
 // Power consumption per lamp in watts
 const LAMP_POWER_CONSUMPTION = 10;
 // Timeout for device offline status (30 seconds)
-const DEVICE_OFFLINE_TIMEOUT = 30000; // 30 seconds in milliseconds
+const DEVICE_OFFLINE_TIMEOUT = 15000; // 15 seconds in milliseconds
 
 const HomeScreen: React.FC = () => {
     const [devices, setDevices] = useState<Device[]>([]);
